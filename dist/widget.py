@@ -1,7 +1,7 @@
 import sys
 import os
 import yt_dlp
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
@@ -63,12 +63,19 @@ class ImageWidget(QWidget):
         
         # Layout and Label
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(15, 15, 15, 15)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.label = QLabel("Click đúp\nhoặc\nKéo thả ảnh/video\nvào đây", self)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("color: white; font-weight: bold; font-family: 'Segoe UI', sans-serif; font-size: 16px;")
         self.layout.addWidget(self.label)
+        
+        self.link_input = QLineEdit(self)
+        self.link_input.setPlaceholderText("Dán link FB/YouTube (Enter)")
+        self.link_input.setStyleSheet("background-color: rgba(255, 255, 255, 50); color: white; border: 1px solid white; border-radius: 5px; padding: 5px;")
+        self.link_input.returnPressed.connect(self.on_link_entered)
+        self.layout.addWidget(self.link_input)
         
         self.show()
 
@@ -255,33 +262,45 @@ class ImageWidget(QWidget):
             self.loadMedia(file_name)
 
     def inputYouTubeLink(self):
-        url, ok = QInputDialog.getText(self, "YouTube", "Nhập link YouTube:")
-        if ok and url:
-            self.label.setText("Đang tải YouTube...\nVui lòng đợi")
-            self.label.show()
-            self.update()
-            
-            if self.movie:
-                self.movie.stop()
-                self.movie = None
-            if self.media_player:
-                self.media_player.stop()
-                self.media_player = None
-                self.video_sink = None
-                self.audio_output = None
-            self.pixmap = None
-            
-            self.yt_fetcher = YouTubeFetcher(url)
-            self.yt_fetcher.finished.connect(self.on_youtube_fetched)
-            self.yt_fetcher.error.connect(self.on_youtube_error)
-            self.yt_fetcher.start()
+        url, ok = QInputDialog.getText(self, "Nhập Link", "Nhập link YouTube/Facebook:")
+        if ok and url.strip():
+            self.process_link(url.strip())
+
+    def on_link_entered(self):
+        url = self.link_input.text().strip()
+        if url:
+            self.process_link(url)
+
+    def process_link(self, url):
+        self.label.setText("Đang tải...\nVui lòng đợi")
+        self.label.show()
+        if hasattr(self, 'link_input'):
+            self.link_input.hide()
+        self.update()
+        
+        if self.movie:
+            self.movie.stop()
+            self.movie = None
+        if self.media_player:
+            self.media_player.stop()
+            self.media_player = None
+            self.video_sink = None
+            self.audio_output = None
+        self.pixmap = None
+        
+        self.yt_fetcher = YouTubeFetcher(url)
+        self.yt_fetcher.finished.connect(self.on_youtube_fetched)
+        self.yt_fetcher.error.connect(self.on_youtube_error)
+        self.yt_fetcher.start()
 
     def on_youtube_fetched(self, stream_url):
         self.loadMedia(stream_url, is_url=True)
 
     def on_youtube_error(self, err):
-        self.label.setText(f"Lỗi tải YouTube:\n{err[:30]}...")
+        self.label.setText(f"Lỗi tải link:\n{err[:30]}...")
         self.label.show()
+        if hasattr(self, 'link_input'):
+            self.link_input.show()
 
     def loadMedia(self, path, is_url=False):
         self.image_path = path
@@ -310,6 +329,8 @@ class ImageWidget(QWidget):
             self.media_player.play()
             
             self.label.hide()
+            if hasattr(self, 'link_input'):
+                self.link_input.hide()
             return
             
         ext = path.lower().split('.')[-1]
@@ -337,6 +358,8 @@ class ImageWidget(QWidget):
             self.update() # Trigger paintEvent
             
         self.label.hide() # Hide text
+        if hasattr(self, 'link_input'):
+            self.link_input.hide()
         
     def on_movie_frame(self, frame_number):
         self.pixmap = self.movie.currentPixmap()
