@@ -1,8 +1,35 @@
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu
-from PyQt6.QtCore import Qt, QPoint, QRect, QSize
-from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen
+import yt_dlp
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog
+from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread
+from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
+
+class YouTubeFetcher(QThread):
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+
+    def run(self):
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(self.url, download=False)
+                stream_url = info.get('url', None)
+                if stream_url:
+                    self.finished.emit(stream_url)
+                else:
+                    self.error.emit("Không lấy được link stream.")
+        except Exception as e:
+            self.error.emit(str(e))
 
 class ImageWidget(QWidget):
     def __init__(self):
@@ -11,6 +38,11 @@ class ImageWidget(QWidget):
         self.dragPos = QPoint()
         self.image_path = None
         self.pixmap = None
+        self.movie = None
+        self.media_player = None
+        self.audio_output = None
+        self.video_sink = None
+        self.yt_fetcher = None
         self.resizing = False
         self.resize_edges = []
         self.start_geometry = QRect()
@@ -33,7 +65,7 @@ class ImageWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
-        self.label = QLabel("Click đúp\nhoặc\nKéo thả ảnh vào đây", self)
+        self.label = QLabel("Click đúp\nhoặc\nKéo thả ảnh/video\nvào đây", self)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setStyleSheet("color: white; font-weight: bold; font-family: 'Segoe UI', sans-serif; font-size: 16px;")
         self.layout.addWidget(self.label)
@@ -54,14 +86,10 @@ class ImageWidget(QWidget):
         painter.setClipPath(path)
         
         if self.pixmap:
-            # Scale pixmap to fit the widget while maintaining aspect ratio, cropping if necessary
-            scaled_pixmap = self.pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+            # Scale pixmap to fit the widget exactly
+            scaled_pixmap = self.pixmap.scaled(self.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
             
-            # Center the image
-            x_offset = (scaled_pixmap.width() - self.width()) // 2
-            y_offset = (scaled_pixmap.height() - self.height()) // 2
-            
-            painter.drawPixmap(0, 0, scaled_pixmap, x_offset, y_offset, self.width(), self.height())
+            painter.drawPixmap(0, 0, scaled_pixmap)
             
             # Add a 5px thin border around the image
             pen = QPen(QColor(255, 255, 255, 200)) # Semi-transparent white border
@@ -195,7 +223,8 @@ class ImageWidget(QWidget):
                 background-color: #007acc;
             }
         """)
-        selectAction = contextMenu.addAction("Chọn ảnh...")
+        selectAction = contextMenu.addAction("Chọn Media (Ảnh/Video)...")
+        youtubeAction = contextMenu.addAction("Nhập link YouTube...")
         resize1Action = contextMenu.addAction("Kích thước: Vuông nhỏ (300x300)")
         resize2Action = contextMenu.addAction("Kích thước: Chữ nhật dọc (300x450)")
         resize3Action = contextMenu.addAction("Kích thước: Chữ nhật ngang (450x300)")
@@ -208,6 +237,8 @@ class ImageWidget(QWidget):
             QApplication.quit()
         elif action == selectAction:
             self.selectImage()
+        elif action == youtubeAction:
+            self.inputYouTubeLink()
         elif action == resize1Action:
             self.resize(300, 300)
             self.update()
@@ -219,15 +250,108 @@ class ImageWidget(QWidget):
             self.update()
 
     def selectImage(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Chọn ảnh", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
+        file_name, _ = QFileDialog.getOpenFileName(self, "Chọn Media", "", "Media Files (*.png *.jpg *.jpeg *.bmp *.gif *.mp4 *.avi *.mkv *.mov *.wmv)")
         if file_name:
-            self.loadImage(file_name)
+            self.loadMedia(file_name)
 
-    def loadImage(self, path):
+    def inputYouTubeLink(self):
+        url, ok = QInputDialog.getText(self, "YouTube", "Nhập link YouTube:")
+        if ok and url:
+            self.label.setText("Đang tải YouTube...\nVui lòng đợi")
+            self.label.show()
+            self.update()
+            
+            if self.movie:
+                self.movie.stop()
+                self.movie = None
+            if self.media_player:
+                self.media_player.stop()
+                self.media_player = None
+                self.video_sink = None
+                self.audio_output = None
+            self.pixmap = None
+            
+            self.yt_fetcher = YouTubeFetcher(url)
+            self.yt_fetcher.finished.connect(self.on_youtube_fetched)
+            self.yt_fetcher.error.connect(self.on_youtube_error)
+            self.yt_fetcher.start()
+
+    def on_youtube_fetched(self, stream_url):
+        self.loadMedia(stream_url, is_url=True)
+
+    def on_youtube_error(self, err):
+        self.label.setText(f"Lỗi tải YouTube:\n{err[:30]}...")
+        self.label.show()
+
+    def loadMedia(self, path, is_url=False):
         self.image_path = path
-        self.pixmap = QPixmap(path)
+        
+        # Dọn dẹp media cũ
+        if self.movie:
+            self.movie.stop()
+            self.movie = None
+        if self.media_player:
+            self.media_player.stop()
+            self.media_player = None
+            self.video_sink = None
+            self.audio_output = None
+            
+        if is_url:
+            self.media_player = QMediaPlayer()
+            self.audio_output = QAudioOutput()
+            self.media_player.setAudioOutput(self.audio_output)
+            
+            self.video_sink = QVideoSink()
+            self.media_player.setVideoOutput(self.video_sink)
+            self.video_sink.videoFrameChanged.connect(self.on_video_frame)
+            self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+            
+            self.media_player.setSource(QUrl(path))
+            self.media_player.play()
+            
+            self.label.hide()
+            return
+            
+        ext = path.lower().split('.')[-1]
+        
+        if ext == 'gif':
+            self.movie = QMovie(path)
+            self.movie.frameChanged.connect(self.on_movie_frame)
+            self.movie.start()
+            
+        elif ext in ['mp4', 'avi', 'mkv', 'mov', 'wmv']:
+            self.media_player = QMediaPlayer()
+            self.audio_output = QAudioOutput()
+            self.media_player.setAudioOutput(self.audio_output)
+            
+            self.video_sink = QVideoSink()
+            self.media_player.setVideoOutput(self.video_sink)
+            self.video_sink.videoFrameChanged.connect(self.on_video_frame)
+            self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+            
+            self.media_player.setSource(QUrl.fromLocalFile(path))
+            self.media_player.play()
+            
+        else:
+            self.pixmap = QPixmap(path)
+            self.update() # Trigger paintEvent
+            
         self.label.hide() # Hide text
-        self.update() # Trigger paintEvent
+        
+    def on_movie_frame(self, frame_number):
+        self.pixmap = self.movie.currentPixmap()
+        self.update()
+        
+    def on_video_frame(self, frame):
+        if frame.isValid():
+            image = frame.toImage()
+            self.pixmap = QPixmap.fromImage(image)
+            self.update()
+            
+    def on_media_status_changed(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.media_player.setPosition(0)
+            self.media_player.play()
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -238,8 +362,8 @@ class ImageWidget(QWidget):
     def dropEvent(self, event):
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
-            if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-                self.loadImage(file_path)
+            if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.mp4', '.avi', '.mkv', '.mov', '.wmv')):
+                self.loadMedia(file_path)
                 break
 
 if __name__ == '__main__':
