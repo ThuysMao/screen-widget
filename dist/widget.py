@@ -1,7 +1,7 @@
 import sys
 import os
 import yt_dlp
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider, QPushButton, QHBoxLayout
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
@@ -101,12 +101,34 @@ class ImageWidget(QWidget):
         self.volume_slider.installEventFilter(self)
         self.volume_anim = None
         
+        # Pause/Play button
+        self.pause_btn = QPushButton("⏸", self)
+        self.pause_btn.setFixedSize(32, 32)
+        self.pause_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 150);
+                color: white;
+                border: 1px solid rgba(255, 255, 255, 100);
+                border-radius: 16px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 122, 204, 200);
+                border: 1px solid rgba(255, 255, 255, 180);
+            }
+        """)
+        self.pause_btn.clicked.connect(self.toggle_pause)
+        self.pause_btn.hide()
+        self.is_paused = False
+        
         self.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, 'volume_slider'):
             self.volume_slider.move(self.width() - self.volume_slider.width() - 20, self.height() - self.volume_slider.height() - 20)
+        if hasattr(self, 'pause_btn'):
+            self.pause_btn.move(20, self.height() - self.pause_btn.height() - 20)
 
     def eventFilter(self, obj, event):
         if obj == self.volume_slider:
@@ -263,7 +285,20 @@ class ImageWidget(QWidget):
             
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.selectImage()
+            # Chỉ cho phép chọn ảnh khi KHÔNG đang ở trạng thái video
+            if self.media_player is None:
+                self.selectImage()
+
+    def toggle_pause(self):
+        if self.media_player:
+            if self.is_paused:
+                self.media_player.play()
+                self.is_paused = False
+                self.pause_btn.setText("⏸")
+            else:
+                self.media_player.pause()
+                self.is_paused = True
+                self.pause_btn.setText("▶")
 
     def showContextMenu(self, pos):
         contextMenu = QMenu(self)
@@ -384,12 +419,16 @@ class ImageWidget(QWidget):
             self.media_player.setSource(QUrl(path))
             self.audio_output.setVolume(self.volume_slider.value() / 100.0 if hasattr(self, 'volume_slider') else 1.0)
             self.media_player.play()
+            self.is_paused = False
+            self.pause_btn.setText("⏸")
             
             self.label.hide()
             if hasattr(self, 'link_input'):
                 self.link_input.hide()
             if hasattr(self, 'volume_slider'):
                 self.volume_slider.show()
+            if hasattr(self, 'pause_btn'):
+                self.pause_btn.show()
             return
             
         ext = path.lower().split('.')[-1]
@@ -412,9 +451,13 @@ class ImageWidget(QWidget):
             self.media_player.setSource(QUrl.fromLocalFile(path))
             self.audio_output.setVolume(self.volume_slider.value() / 100.0 if hasattr(self, 'volume_slider') else 1.0)
             self.media_player.play()
+            self.is_paused = False
+            self.pause_btn.setText("⏸")
             
             if hasattr(self, 'volume_slider'):
                 self.volume_slider.show()
+            if hasattr(self, 'pause_btn'):
+                self.pause_btn.show()
             
         else:
             self.pixmap = QPixmap(path)
@@ -423,6 +466,9 @@ class ImageWidget(QWidget):
         self.label.hide() # Hide text
         if hasattr(self, 'link_input'):
             self.link_input.hide()
+        # Ẩn nút pause nếu không phải video
+        if not self.media_player and hasattr(self, 'pause_btn'):
+            self.pause_btn.hide()
         
     def on_movie_frame(self, frame_number):
         self.pixmap = self.movie.currentPixmap()

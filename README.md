@@ -12,6 +12,7 @@ Một tiện ích hiển thị đa phương tiện (ảnh/video) trên màn hìn
 - **Tùy chỉnh kích thước:** Bạn có thể kéo các góc hoặc các cạnh của widget để phóng to/thu nhỏ khung hình một cách linh hoạt, hoặc dùng Menu chuột phải để chọn các kích thước có sẵn.
 - **Di chuyển dễ dàng:** Bạn có thể kéo thả để di chuyển widget đi bất cứ đâu trên màn hình.
 - **Điều chỉnh âm lượng thông minh:** Thanh âm lượng mặc định 20%, tự động phóng to mượt mà khi di chuột vào và thu nhỏ lại gọn gàng khi di chuột ra.
+- **Nút Pause/Play:** Khi phát video, nút tạm dừng/tiếp tục hiển thị ở góc dưới bên trái giúp điều khiển video nhanh chóng mà không cần mở menu.
 
 ## 🚀 Hướng dẫn sử dụng
 
@@ -20,13 +21,14 @@ Một tiện ích hiển thị đa phương tiện (ảnh/video) trên màn hìn
 
 ### 2. Tải Media (Ảnh/Video/Link) lên widget
 - **Cách 1 (Nhanh nhất cho Link):** Dán trực tiếp link video YouTube hoặc Facebook vào ô nhập link ngay trên giao diện chính của widget và nhấn **Enter**.
-- **Cách 2:** Nhấp đúp chuột trái vào khoảng trống của widget, một cửa sổ chọn file sẽ hiện ra để bạn tìm ảnh hoặc video từ máy tính.
+- **Cách 2:** Nhấp đúp chuột trái vào khoảng trống của widget, một cửa sổ chọn file sẽ hiện ra để bạn tìm ảnh hoặc video từ máy tính. *(Lưu ý: Nhấp đúp chỉ hoạt động khi đang ở trạng thái ảnh/GIF hoặc chưa tải media, không hoạt động khi đang phát video để tránh thao tác nhầm)*
 - **Cách 3:** Kéo trực tiếp một file media (`.png`, `.jpg`, `.gif`, `.mp4`, `.avi`,...) từ máy tính và thả vào bên trong widget.
 
 ### 3. Tương tác với widget
 - **Di chuyển:** Nhấn giữ chuột trái vào video/ảnh và kéo để di chuyển khung hình đến vị trí mong muốn.
 - **Thay đổi kích thước tự do:** Đưa chuột ra các viền hoặc các góc của widget (con trỏ chuột sẽ đổi biểu tượng), sau đó nhấn giữ và kéo để thay đổi kích thước tùy ý.
 - **Điều chỉnh âm lượng:** Khi phát video, thanh âm lượng ở góc dưới sẽ tự động phóng to khi bạn đưa chuột vào để dễ dàng thao tác.
+- **Tạm dừng/Tiếp tục video:** Nhấn nút ⏸ ở góc dưới bên trái để tạm dừng video, nhấn lại (▶) để tiếp tục phát.
 - **Mở Menu tùy chọn:** Nhấn chuột phải vào widget để mở Menu, tại đây bạn có thể:
   - Chọn một file Media mới.
   - Nhập link YouTube/Facebook thủ công.
