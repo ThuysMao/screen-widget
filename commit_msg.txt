@@ -1,0 +1,6 @@
+Thêm hiệu ứng thu phóng mượt mà cho thanh âm lượng và cập nhật README
+
+- Đặt âm lượng mặc định ở mức 20%
+- Thêm hiệu ứng hover (QPropertyAnimation) cho thanh điều chỉnh âm lượng để tự động phóng to khi đưa chuột vào và thu nhỏ khi đưa chuột ra ngoài.
+- Cập nhật thông tin trong README.md
+- Build lại file widget.exe mới

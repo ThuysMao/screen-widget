@@ -2,7 +2,7 @@ import sys
 import os
 import yt_dlp
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider
-from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve, QEvent
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
 
@@ -79,8 +79,8 @@ class ImageWidget(QWidget):
         
         self.volume_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(100)
-        self.volume_slider.setFixedSize(60, 15)
+        self.volume_slider.setValue(20)
+        self.volume_slider.setGeometry(self.width() - 40, self.height() - 35, 20, 15)
         self.volume_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 border: 1px solid #999;
@@ -98,6 +98,8 @@ class ImageWidget(QWidget):
         """)
         self.volume_slider.hide()
         self.volume_slider.valueChanged.connect(self.on_volume_changed)
+        self.volume_slider.installEventFilter(self)
+        self.volume_anim = None
         
         self.show()
 
@@ -105,6 +107,24 @@ class ImageWidget(QWidget):
         super().resizeEvent(event)
         if hasattr(self, 'volume_slider'):
             self.volume_slider.move(self.width() - self.volume_slider.width() - 20, self.height() - self.volume_slider.height() - 20)
+
+    def eventFilter(self, obj, event):
+        if obj == self.volume_slider:
+            if event.type() == QEvent.Type.Enter:
+                self.volume_anim = QPropertyAnimation(self.volume_slider, b"geometry")
+                self.volume_anim.setDuration(200)
+                end_rect = QRect(self.width() - 80 - 20, self.height() - 15 - 20, 80, 15)
+                self.volume_anim.setEndValue(end_rect)
+                self.volume_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+                self.volume_anim.start()
+            elif event.type() == QEvent.Type.Leave:
+                self.volume_anim = QPropertyAnimation(self.volume_slider, b"geometry")
+                self.volume_anim.setDuration(200)
+                end_rect = QRect(self.width() - 20 - 20, self.height() - 15 - 20, 20, 15)
+                self.volume_anim.setEndValue(end_rect)
+                self.volume_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+                self.volume_anim.start()
+        return super().eventFilter(obj, event)
 
     def on_volume_changed(self, value):
         if self.audio_output:
