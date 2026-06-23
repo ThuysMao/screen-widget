@@ -434,7 +434,7 @@ class ImageWidget(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    app.setApplicationName("Desktop Image Widget")
+    app.setApplicationName("Desktop Image Widget v1.1")
     
     widget = ImageWidget()
     
