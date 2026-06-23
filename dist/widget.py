@@ -1,7 +1,7 @@
 import sys
 import os
 import yt_dlp
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
@@ -77,7 +77,38 @@ class ImageWidget(QWidget):
         self.link_input.returnPressed.connect(self.on_link_entered)
         self.layout.addWidget(self.link_input)
         
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal, self)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(100)
+        self.volume_slider.setFixedSize(60, 15)
+        self.volume_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #999;
+                height: 4px;
+                background: rgba(0, 0, 0, 150);
+                margin: 0px 0;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 1px solid #5c5c5c;
+                width: 10px;
+                margin: -4px 0;
+                border-radius: 3px;
+            }
+        """)
+        self.volume_slider.hide()
+        self.volume_slider.valueChanged.connect(self.on_volume_changed)
+        
         self.show()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.move(self.width() - self.volume_slider.width() - 20, self.height() - self.volume_slider.height() - 20)
+
+    def on_volume_changed(self, value):
+        if self.audio_output:
+            self.audio_output.setVolume(value / 100.0)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -276,6 +307,8 @@ class ImageWidget(QWidget):
         self.label.show()
         if hasattr(self, 'link_input'):
             self.link_input.hide()
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.hide()
         self.update()
         
         if self.movie:
@@ -305,6 +338,9 @@ class ImageWidget(QWidget):
     def loadMedia(self, path, is_url=False):
         self.image_path = path
         
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.hide()
+            
         # Dọn dẹp media cũ
         if self.movie:
             self.movie.stop()
@@ -326,11 +362,14 @@ class ImageWidget(QWidget):
             self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
             
             self.media_player.setSource(QUrl(path))
+            self.audio_output.setVolume(self.volume_slider.value() / 100.0 if hasattr(self, 'volume_slider') else 1.0)
             self.media_player.play()
             
             self.label.hide()
             if hasattr(self, 'link_input'):
                 self.link_input.hide()
+            if hasattr(self, 'volume_slider'):
+                self.volume_slider.show()
             return
             
         ext = path.lower().split('.')[-1]
@@ -351,7 +390,11 @@ class ImageWidget(QWidget):
             self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
             
             self.media_player.setSource(QUrl.fromLocalFile(path))
+            self.audio_output.setVolume(self.volume_slider.value() / 100.0 if hasattr(self, 'volume_slider') else 1.0)
             self.media_player.play()
+            
+            if hasattr(self, 'volume_slider'):
+                self.volume_slider.show()
             
         else:
             self.pixmap = QPixmap(path)
