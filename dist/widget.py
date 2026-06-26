@@ -305,17 +305,24 @@ class ImageWidget(QWidget):
         self.volume_slider.setGeometry(self.width() - 40, self.height() - 35, 20, 15)
         self.volume_slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                border: 1px solid #999;
                 height: 4px;
-                background: rgba(0, 0, 0, 150);
-                margin: 0px 0;
+                background: rgba(255, 255, 255, 60);
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: rgba(255, 255, 255, 220);
+                border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background: white;
-                border: 1px solid #5c5c5c;
+                background: #ffffff;
                 width: 10px;
-                margin: -4px 0;
-                border-radius: 3px;
+                height: 10px;
+                margin-top: -3px;
+                margin-bottom: -3px;
+                border-radius: 5px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #ff3333;
             }
         """)
         self.volume_slider.hide()
@@ -328,15 +335,20 @@ class ImageWidget(QWidget):
         self.pause_btn.setFixedSize(32, 32)
         self.pause_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(0, 0, 0, 150);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 100);
+                background-color: rgba(20, 20, 20, 200);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 30);
                 border-radius: 16px;
-                font-size: 14px;
+                font-size: 13px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: rgba(0, 122, 204, 200);
-                border: 1px solid rgba(255, 255, 255, 180);
+                background-color: rgba(230, 33, 23, 220);
+                border: 1px solid rgba(255, 255, 255, 80);
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: rgba(180, 20, 15, 240);
             }
         """)
         self.pause_btn.clicked.connect(self.toggle_pause)
@@ -348,15 +360,19 @@ class ImageWidget(QWidget):
         self.change_link_btn.setFixedSize(32, 32)
         self.change_link_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(0, 0, 0, 150);
-                color: white;
-                border: 1px solid rgba(255, 255, 255, 100);
+                background-color: rgba(20, 20, 20, 200);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 30);
                 border-radius: 16px;
-                font-size: 14px;
+                font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(0, 122, 204, 200);
-                border: 1px solid rgba(255, 255, 255, 180);
+                background-color: rgba(230, 33, 23, 220);
+                border: 1px solid rgba(255, 255, 255, 80);
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: rgba(180, 20, 15, 240);
             }
         """)
         self.change_link_btn.clicked.connect(self.inputYouTubeLink)
