@@ -1,9 +1,9 @@
 import sys
 import os
 import yt_dlp
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider, QPushButton, QHBoxLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider, QPushButton, QHBoxLayout, QGraphicsOpacityEffect
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve, QEvent
-from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie
+from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie, QCursor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
 
 class YouTubeFetcher(QThread):
@@ -268,6 +268,8 @@ class ImageWidget(QWidget):
         self.resize_edges = []
         self.start_geometry = QRect()
         self.start_mouse_pos = QPoint()
+        self.is_hovered = False
+        self.control_anims = []
         self.initUI()
 
     def initUI(self):
@@ -555,6 +557,79 @@ class ImageWidget(QWidget):
             if self.media_player is None:
                 self.selectImage()
 
+    def enterEvent(self, event):
+        self.is_hovered = True
+        self.fade_controls(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        pos = QCursor.pos()
+        if self.rect().contains(self.mapFromGlobal(pos)):
+            super().leaveEvent(event)
+            return
+        self.is_hovered = False
+        self.fade_controls(False)
+        super().leaveEvent(event)
+
+    def check_hover_and_update(self):
+        self.is_hovered = self.rect().contains(self.mapFromGlobal(QCursor.pos()))
+        self.fade_controls(self.is_hovered, duration=0)
+
+    def fade_controls(self, show, duration=250):
+        has_video = self.media_player is not None
+        should_show = has_video and show
+        
+        target_opacity = 1.0 if should_show else 0.0
+        
+        # Stop any existing animations
+        if hasattr(self, 'control_anims') and self.control_anims:
+            for anim in self.control_anims:
+                anim.stop()
+        self.control_anims = []
+
+        controls = []
+        if hasattr(self, 'pause_btn') and self.pause_btn:
+            controls.append(self.pause_btn)
+        if hasattr(self, 'seek_slider') and self.seek_slider:
+            controls.append(self.seek_slider)
+        if hasattr(self, 'change_link_btn') and self.change_link_btn:
+            controls.append(self.change_link_btn)
+        if hasattr(self, 'volume_slider') and self.volume_slider:
+            controls.append(self.volume_slider)
+
+        for widget in controls:
+            effect = widget.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                effect = QGraphicsOpacityEffect(widget)
+                widget.setGraphicsEffect(effect)
+            
+            if duration == 0:
+                effect.setOpacity(target_opacity)
+                widget.setVisible(should_show)
+                widget.setEnabled(should_show)
+            else:
+                if should_show:
+                    widget.show()
+                    widget.setEnabled(True)
+                else:
+                    widget.setEnabled(False)
+                
+                anim = QPropertyAnimation(effect, b"opacity")
+                anim.setDuration(duration)
+                anim.setStartValue(effect.opacity())
+                anim.setEndValue(target_opacity)
+                anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+                
+                if not should_show:
+                    def make_hide_callback(w=widget):
+                        eff = w.graphicsEffect()
+                        if eff and eff.opacity() == 0.0:
+                            w.hide()
+                    anim.finished.connect(make_hide_callback)
+                    
+                anim.start()
+                self.control_anims.append(anim)
+
     def toggle_pause(self):
         if self.media_player:
             if self.is_paused:
@@ -727,14 +802,7 @@ class ImageWidget(QWidget):
             self.label.hide()
             if hasattr(self, 'link_input'):
                 self.link_input.hide()
-            if hasattr(self, 'volume_slider'):
-                self.volume_slider.show()
-            if hasattr(self, 'pause_btn'):
-                self.pause_btn.show()
-            if hasattr(self, 'seek_slider') and self.seek_slider:
-                self.seek_slider.show()
-            if hasattr(self, 'change_link_btn') and self.change_link_btn:
-                self.change_link_btn.show()
+            self.check_hover_and_update()
             return
             
         ext = path.lower().split('.')[-1]
@@ -762,14 +830,7 @@ class ImageWidget(QWidget):
             self.is_paused = False
             self.pause_btn.setText("⏸")
             
-            if hasattr(self, 'volume_slider'):
-                self.volume_slider.show()
-            if hasattr(self, 'pause_btn'):
-                self.pause_btn.show()
-            if hasattr(self, 'seek_slider') and self.seek_slider:
-                self.seek_slider.show()
-            if hasattr(self, 'change_link_btn') and self.change_link_btn:
-                self.change_link_btn.show()
+            self.check_hover_and_update()
             
         else:
             self.pixmap = QPixmap(path)
@@ -778,9 +839,7 @@ class ImageWidget(QWidget):
         self.label.hide() # Hide text
         if hasattr(self, 'link_input'):
             self.link_input.hide()
-        # Ẩn nút pause nếu không phải video
-        if not self.media_player and hasattr(self, 'pause_btn'):
-            self.pause_btn.hide()
+        self.check_hover_and_update()
         
     def on_movie_frame(self, frame_number):
         self.pixmap = self.movie.currentPixmap()
