@@ -254,7 +254,6 @@ class SegmentedProgressBar(QWidget):
 class ImageWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.initUI()
         self.dragPos = QPoint()
         self.image_path = None
         self.pixmap = None
@@ -269,6 +268,7 @@ class ImageWidget(QWidget):
         self.resize_edges = []
         self.start_geometry = QRect()
         self.start_mouse_pos = QPoint()
+        self.initUI()
 
     def initUI(self):
         # Set window flags for frameless, always on top, and hide from taskbar (Tool)
