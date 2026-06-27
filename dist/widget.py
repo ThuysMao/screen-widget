@@ -897,11 +897,11 @@ class ImageWidget(QWidget):
         </style>
         </head>
         <body>
-          <iframe src="https://www.youtube.com/embed/{video_id}?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+          <iframe src="https://www.youtube.com/embed/{video_id}?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </body>
         </html>
         """
-        self.web_view.setHtml(html)
+        self.web_view.setHtml(html, QUrl("https://localhost/"))
         self.web_view.show()
         
         if hasattr(self, 'change_link_btn') and self.change_link_btn:
