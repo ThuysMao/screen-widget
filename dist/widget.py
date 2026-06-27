@@ -780,14 +780,21 @@ class ImageWidget(QWidget):
                 anim.start()
                 self.control_anims.append(anim)
 
-        if not show and is_youtube:
-            self.web_view.page().runJavaScript("""
-                var iframe = document.querySelector('iframe');
-                if (iframe) {
-                    iframe.style.pointerEvents = 'none';
-                    setTimeout(() => { iframe.style.pointerEvents = 'auto'; }, 500);
-                }
-            """)
+        if is_youtube:
+            if show:
+                self.web_view.page().runJavaScript("""
+                    var iframe = document.querySelector('iframe');
+                    if (iframe) {
+                        iframe.style.pointerEvents = 'auto';
+                    }
+                """)
+            else:
+                self.web_view.page().runJavaScript("""
+                    var iframe = document.querySelector('iframe');
+                    if (iframe) {
+                        iframe.style.pointerEvents = 'none';
+                    }
+                """)
 
     def toggle_pause(self):
         if self.media_player:
