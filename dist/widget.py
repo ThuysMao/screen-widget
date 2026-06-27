@@ -1,10 +1,12 @@
 import sys
 import os
 import yt_dlp
+import re
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QFileDialog, QVBoxLayout, QMenu, QInputDialog, QLineEdit, QSlider, QPushButton, QHBoxLayout, QGraphicsOpacityEffect
-from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve, QEvent
+from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QUrl, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve, QEvent, QTimer
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QColor, QBrush, QAction, QIcon, QImage, QPen, QMovie, QCursor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 class YouTubeFetcher(QThread):
     finished = pyqtSignal(str, dict)
@@ -262,6 +264,7 @@ class ImageWidget(QWidget):
         self.audio_output = None
         self.video_sink = None
         self.yt_fetcher = None
+        self.web_view = None
         self.seek_slider = None
         self.change_link_btn = None
         self.resizing = False
@@ -301,10 +304,30 @@ class ImageWidget(QWidget):
         self.link_input.returnPressed.connect(self.on_link_entered)
         self.layout.addWidget(self.link_input)
         
+        # Volume button
+        self.volume_btn = QPushButton("🔊", self)
+        self.volume_btn.setFixedSize(32, 32)
+        self.volume_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: white;
+                border: none;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                color: #ff3333;
+            }
+        """)
+        self.volume_btn.hide()
+        self.volume_btn.installEventFilter(self)
+        self.volume_btn.clicked.connect(self.toggle_mute)
+        self.is_muted = False
+        self.last_volume = 20
+
         self.volume_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(20)
-        self.volume_slider.setGeometry(self.width() - 40, self.height() - 35, 20, 15)
+        self.volume_slider.setFixedSize(0, 15)
         self.volume_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 4px;
@@ -312,16 +335,16 @@ class ImageWidget(QWidget):
                 border-radius: 2px;
             }
             QSlider::sub-page:horizontal {
-                background: rgba(255, 255, 255, 220);
+                background: white;
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background: #ffffff;
-                width: 10px;
-                height: 10px;
-                margin-top: -3px;
-                margin-bottom: -3px;
-                border-radius: 5px;
+                background: white;
+                width: 12px;
+                height: 12px;
+                margin-top: -4px;
+                margin-bottom: -4px;
+                border-radius: 6px;
             }
             QSlider::handle:horizontal:hover {
                 background: #ff3333;
@@ -337,25 +360,52 @@ class ImageWidget(QWidget):
         self.pause_btn.setFixedSize(32, 32)
         self.pause_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(20, 20, 20, 200);
-                color: #ffffff;
-                border: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 16px;
-                font-size: 13px;
-                font-weight: bold;
+                background-color: transparent;
+                color: white;
+                border: none;
+                font-size: 18px;
             }
             QPushButton:hover {
-                background-color: rgba(230, 33, 23, 220);
-                border: 1px solid rgba(255, 255, 255, 80);
-                color: #ffffff;
-            }
-            QPushButton:pressed {
-                background-color: rgba(180, 20, 15, 240);
+                color: #ff3333;
             }
         """)
         self.pause_btn.clicked.connect(self.toggle_pause)
         self.pause_btn.hide()
         self.is_paused = False
+
+        # Rewind button
+        self.rewind_btn = QPushButton("⏪", self)
+        self.rewind_btn.setFixedSize(32, 32)
+        self.rewind_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: white;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                color: #ff3333;
+            }
+        """)
+        self.rewind_btn.clicked.connect(self.skip_backward)
+        self.rewind_btn.hide()
+
+        # Forward button
+        self.forward_btn = QPushButton("⏩", self)
+        self.forward_btn.setFixedSize(32, 32)
+        self.forward_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: white;
+                border: none;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                color: #ff3333;
+            }
+        """)
+        self.forward_btn.clicked.connect(self.skip_forward)
+        self.forward_btn.hide()
 
         # Change link button at top left
         self.change_link_btn = QPushButton("🔗", self)
@@ -385,38 +435,114 @@ class ImageWidget(QWidget):
         self.seek_slider.seek_requested.connect(self.on_seek_requested)
         self.seek_slider.hide()
         
+        # WebEngineView for YouTube
+        self.web_view = QWebEngineView(self)
+        self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
+        self.web_view.hide()
+        
         self.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, 'volume_slider'):
-            self.volume_slider.move(self.width() - self.volume_slider.width() - 20, self.height() - self.volume_slider.height() - 20)
+        if hasattr(self, 'web_view') and self.web_view:
+            # Leave a 10px margin so the user can drag/resize the widget from the edges
+            self.web_view.setGeometry(10, 10, self.width() - 20, self.height() - 20)
+        
+        # Align YouTube-like controls at bottom left
+        y_pos = self.height() - 40
         if hasattr(self, 'pause_btn'):
-            self.pause_btn.move(20, self.height() - self.pause_btn.height() - 20)
+            self.pause_btn.move(15, y_pos)
+        if hasattr(self, 'rewind_btn'):
+            self.rewind_btn.move(45, y_pos)
+        if hasattr(self, 'forward_btn'):
+            self.forward_btn.move(75, y_pos)
+        if hasattr(self, 'volume_btn'):
+            self.volume_btn.move(105, y_pos)
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.move(140, y_pos + 8) # Offset to align vertically with buttons
+
         if hasattr(self, 'change_link_btn') and self.change_link_btn:
             self.change_link_btn.move(20, 20)
         if hasattr(self, 'seek_slider') and self.seek_slider:
             self.seek_slider.setGeometry(20, self.height() - 88, self.width() - 40, 35)
 
     def eventFilter(self, obj, event):
-        if obj == self.volume_slider:
+        if obj in (self.volume_btn, self.volume_slider):
             if event.type() == QEvent.Type.Enter:
-                self.volume_anim = QPropertyAnimation(self.volume_slider, b"geometry")
-                self.volume_anim.setDuration(200)
-                end_rect = QRect(self.width() - 80 - 20, self.height() - 15 - 20, 80, 15)
-                self.volume_anim.setEndValue(end_rect)
-                self.volume_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-                self.volume_anim.start()
+                self._expand_volume()
             elif event.type() == QEvent.Type.Leave:
-                self.volume_anim = QPropertyAnimation(self.volume_slider, b"geometry")
-                self.volume_anim.setDuration(200)
-                end_rect = QRect(self.width() - 20 - 20, self.height() - 15 - 20, 20, 15)
-                self.volume_anim.setEndValue(end_rect)
-                self.volume_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-                self.volume_anim.start()
+                QTimer.singleShot(50, self._check_collapse_volume)
         return super().eventFilter(obj, event)
 
+    def _expand_volume(self):
+        self.volume_slider.show()
+        if not hasattr(self, 'vol_anim') or self.vol_anim.state() != QPropertyAnimation.State.Running:
+            self.vol_anim = QPropertyAnimation(self.volume_slider, b"minimumWidth")
+            self.vol_anim.setDuration(150)
+            self.vol_anim.setEndValue(60)
+            self.vol_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+            
+            self.vol_anim2 = QPropertyAnimation(self.volume_slider, b"maximumWidth")
+            self.vol_anim2.setDuration(150)
+            self.vol_anim2.setEndValue(60)
+            self.vol_anim2.setEasingCurve(QEasingCurve.Type.OutQuad)
+            
+            self.vol_anim.start()
+            self.vol_anim2.start()
+
+    def _check_collapse_volume(self):
+        pos = QCursor.pos()
+        vol_btn_rect = QRect(self.volume_btn.mapToGlobal(QPoint(0,0)), self.volume_btn.size())
+        vol_slider_rect = QRect(self.volume_slider.mapToGlobal(QPoint(0,0)), self.volume_slider.size())
+        
+        # Add a tiny padding to prevent flickering
+        vol_slider_rect.adjust(-5, -5, 5, 5)
+        
+        if not (vol_btn_rect.contains(pos) or vol_slider_rect.contains(pos)):
+            self.vol_anim = QPropertyAnimation(self.volume_slider, b"minimumWidth")
+            self.vol_anim.setDuration(150)
+            self.vol_anim.setEndValue(0)
+            self.vol_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+            
+            self.vol_anim2 = QPropertyAnimation(self.volume_slider, b"maximumWidth")
+            self.vol_anim2.setDuration(150)
+            self.vol_anim2.setEndValue(0)
+            self.vol_anim2.setEasingCurve(QEasingCurve.Type.OutQuad)
+            
+            def hide_slider():
+                if self.volume_slider.width() == 0:
+                    self.volume_slider.hide()
+            self.vol_anim.finished.connect(hide_slider)
+            
+            self.vol_anim.start()
+            self.vol_anim2.start()
+
+    def toggle_mute(self):
+        if self.is_muted:
+            self.is_muted = False
+            self.volume_slider.setValue(self.last_volume)
+            self.volume_btn.setText("🔊")
+            if self.audio_output:
+                self.audio_output.setVolume(self.last_volume / 100.0)
+        else:
+            self.is_muted = True
+            self.last_volume = self.volume_slider.value() if self.volume_slider.value() > 0 else 20
+            self.volume_slider.setValue(0)
+            self.volume_btn.setText("🔇")
+            if self.audio_output:
+                self.audio_output.setVolume(0.0)
+
     def on_volume_changed(self, value):
+        if value > 0 and self.is_muted:
+            self.is_muted = False
+        
+        if value == 0:
+            self.volume_btn.setText("🔇")
+        elif value < 50:
+            self.volume_btn.setText("🔉")
+        else:
+            self.volume_btn.setText("🔊")
+            
         if self.audio_output:
             self.audio_output.setVolume(value / 100.0)
 
@@ -434,10 +560,12 @@ class ImageWidget(QWidget):
         painter.setClipPath(path)
         
         if self.pixmap:
-            # Scale pixmap to fit the widget exactly
-            scaled_pixmap = self.pixmap.scaled(self.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # Scale pixmap preserving aspect ratio
+            scaled_pixmap = self.pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
             
-            painter.drawPixmap(0, 0, scaled_pixmap)
+            x = (self.width() - scaled_pixmap.width()) // 2
+            y = (self.height() - scaled_pixmap.height()) // 2
+            painter.drawPixmap(x, y, scaled_pixmap)
             
             # Add a 5px thin border around the image
             pen = QPen(QColor(255, 255, 255, 200)) # Semi-transparent white border
@@ -590,12 +718,19 @@ class ImageWidget(QWidget):
         controls = []
         if hasattr(self, 'pause_btn') and self.pause_btn:
             controls.append(self.pause_btn)
+        if hasattr(self, 'rewind_btn') and self.rewind_btn:
+            controls.append(self.rewind_btn)
+        if hasattr(self, 'forward_btn') and self.forward_btn:
+            controls.append(self.forward_btn)
+        if hasattr(self, 'volume_btn') and self.volume_btn:
+            controls.append(self.volume_btn)
         if hasattr(self, 'seek_slider') and self.seek_slider:
             controls.append(self.seek_slider)
         if hasattr(self, 'change_link_btn') and self.change_link_btn:
             controls.append(self.change_link_btn)
         if hasattr(self, 'volume_slider') and self.volume_slider:
-            controls.append(self.volume_slider)
+            # We don't opacity animate volume_slider directly, it's controlled by hover on volume_btn
+            pass
 
         for widget in controls:
             effect = widget.graphicsEffect()
@@ -640,6 +775,19 @@ class ImageWidget(QWidget):
                 self.media_player.pause()
                 self.is_paused = True
                 self.pause_btn.setText("▶")
+
+    def skip_forward(self):
+        if self.media_player:
+            pos = self.media_player.position()
+            duration = self.media_player.duration()
+            new_pos = min(pos + 10000, duration)
+            self.media_player.setPosition(new_pos)
+
+    def skip_backward(self):
+        if self.media_player:
+            pos = self.media_player.position()
+            new_pos = max(pos - 10000, 0)
+            self.media_player.setPosition(new_pos)
 
     def showContextMenu(self, pos):
         contextMenu = QMenu(self)
@@ -711,6 +859,57 @@ class ImageWidget(QWidget):
         if hasattr(self, 'seek_slider') and self.seek_slider:
             self.seek_slider.setDuration(duration)
 
+    def load_webengine_youtube(self, video_id):
+        if self.movie:
+            self.movie.stop()
+            self.movie = None
+        if self.media_player:
+            self.media_player.stop()
+            self.media_player = None
+            self.video_sink = None
+            self.audio_output = None
+        self.pixmap = None
+        
+        self.label.hide()
+        if hasattr(self, 'link_input'):
+            self.link_input.hide()
+        
+        if hasattr(self, 'seek_slider') and self.seek_slider:
+            self.seek_slider.hide()
+        if hasattr(self, 'pause_btn'):
+            self.pause_btn.hide()
+        if hasattr(self, 'rewind_btn'):
+            self.rewind_btn.hide()
+        if hasattr(self, 'forward_btn'):
+            self.forward_btn.hide()
+        if hasattr(self, 'volume_btn'):
+            self.volume_btn.hide()
+        if hasattr(self, 'volume_slider'):
+            self.volume_slider.hide()
+            
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+          body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: transparent; border-radius: 5px; }}
+          iframe {{ width: 100%; height: 100%; border: none; border-radius: 5px; }}
+        </style>
+        </head>
+        <body>
+          <iframe src="https://www.youtube.com/embed/{video_id}?autoplay=1&rel=0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </body>
+        </html>
+        """
+        self.web_view.setHtml(html)
+        self.web_view.show()
+        
+        if hasattr(self, 'change_link_btn') and self.change_link_btn:
+            self.change_link_btn.show()
+            self.change_link_btn.raise_()
+        
+        self.update()
+
     def process_link(self, url):
         self.label.setText("Đang tải...\nVui lòng đợi")
         self.label.show()
@@ -718,12 +917,25 @@ class ImageWidget(QWidget):
             self.link_input.hide()
         if hasattr(self, 'volume_slider'):
             self.volume_slider.hide()
+        if hasattr(self, 'volume_btn'):
+            self.volume_btn.hide()
+        if hasattr(self, 'rewind_btn'):
+            self.rewind_btn.hide()
+        if hasattr(self, 'forward_btn'):
+            self.forward_btn.hide()
         if hasattr(self, 'seek_slider') and self.seek_slider:
             self.seek_slider.hide()
         if hasattr(self, 'change_link_btn') and self.change_link_btn:
             self.change_link_btn.hide()
         self.update()
         
+        youtube_regex = r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})"
+        match = re.search(youtube_regex, url)
+        if match and ('youtube.com' in url.lower() or 'youtu.be' in url.lower()):
+            video_id = match.group(1)
+            self.load_webengine_youtube(video_id)
+            return
+
         if self.movie:
             self.movie.stop()
             self.movie = None
@@ -753,8 +965,18 @@ class ImageWidget(QWidget):
     def loadMedia(self, path, is_url=False, info=None):
         self.image_path = path
         
+        if hasattr(self, 'web_view') and self.web_view:
+            self.web_view.hide()
+            self.web_view.setHtml("")
+            
         if hasattr(self, 'volume_slider'):
             self.volume_slider.hide()
+        if hasattr(self, 'volume_btn'):
+            self.volume_btn.hide()
+        if hasattr(self, 'rewind_btn'):
+            self.rewind_btn.hide()
+        if hasattr(self, 'forward_btn'):
+            self.forward_btn.hide()
             
         # Dọn dẹp media cũ
         if self.movie:
@@ -829,6 +1051,8 @@ class ImageWidget(QWidget):
             self.media_player.play()
             self.is_paused = False
             self.pause_btn.setText("⏸")
+            if hasattr(self, 'rewind_btn'): self.rewind_btn.show()
+            if hasattr(self, 'forward_btn'): self.forward_btn.show()
             
             self.check_hover_and_update()
             
