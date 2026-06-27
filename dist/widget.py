@@ -253,6 +253,15 @@ class SegmentedProgressBar(QWidget):
         self.is_hovering = False
         self.update()
 
+class CustomWebEngineView(QWebEngineView):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_widget = parent
+
+    def contextMenuEvent(self, event):
+        if self.parent_widget and hasattr(self.parent_widget, 'showContextMenu'):
+            self.parent_widget.showContextMenu(event.globalPos())
+
 class ImageWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -436,7 +445,7 @@ class ImageWidget(QWidget):
         self.seek_slider.hide()
         
         # WebEngineView for YouTube
-        self.web_view = QWebEngineView(self)
+        self.web_view = CustomWebEngineView(self)
         self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.hide()
         
@@ -782,6 +791,7 @@ class ImageWidget(QWidget):
 
         if is_youtube:
             if show:
+                self.web_view.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
                 self.web_view.page().runJavaScript("""
                     var iframe = document.querySelector('iframe');
                     if (iframe) {
@@ -789,6 +799,7 @@ class ImageWidget(QWidget):
                     }
                 """)
             else:
+                self.web_view.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
                 self.web_view.page().runJavaScript("""
                     var iframe = document.querySelector('iframe');
                     if (iframe) {
