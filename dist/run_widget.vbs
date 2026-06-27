@@ -1,2 +1,4 @@
+Set objFSO = CreateObject("Scripting.FileSystemObject")
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run "pythonw.exe ""C:\Users\MaoMao\.gemini\antigravity-ide\scratch\image-widget\widget.py""", 0, False
+strPath = objFSO.GetParentFolderName(WScript.ScriptFullName)
+WshShell.Run "pythonw.exe """ & strPath & "\widget.py""", 0, False
