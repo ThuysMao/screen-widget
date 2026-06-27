@@ -440,6 +440,11 @@ class ImageWidget(QWidget):
         self.web_view.page().setBackgroundColor(Qt.GlobalColor.transparent)
         self.web_view.hide()
         
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setInterval(200)
+        self.hover_timer.timeout.connect(self._timer_check_hover)
+        self.hover_timer.start()
+        
         self.show()
 
     def resizeEvent(self, event):
@@ -686,28 +691,36 @@ class ImageWidget(QWidget):
                 self.selectImage()
 
     def enterEvent(self, event):
-        self.is_hovered = True
-        self.fade_controls(True)
+        self.check_hover_and_update(duration=250, force=False)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        pos = QCursor.pos()
-        if self.rect().contains(self.mapFromGlobal(pos)):
-            super().leaveEvent(event)
-            return
-        self.is_hovered = False
-        self.fade_controls(False)
+        self.check_hover_and_update(duration=250, force=False)
         super().leaveEvent(event)
 
-    def check_hover_and_update(self):
-        self.is_hovered = self.rect().contains(self.mapFromGlobal(QCursor.pos()))
-        self.fade_controls(self.is_hovered, duration=0)
+    def _timer_check_hover(self):
+        self.check_hover_and_update(duration=250, force=False)
+
+    def check_hover_and_update(self, duration=0, force=True):
+        pos = QCursor.pos()
+        is_inside = self.rect().contains(self.mapFromGlobal(pos))
+        
+        is_dragging = False
+        if hasattr(self, 'seek_slider') and getattr(self.seek_slider, 'is_dragging', False):
+            is_dragging = True
+            
+        if is_inside:
+            if not self.is_hovered or force:
+                self.is_hovered = True
+                self.fade_controls(True, duration=duration)
+        else:
+            if (self.is_hovered and not is_dragging) or force:
+                self.is_hovered = False
+                self.fade_controls(False, duration=duration)
 
     def fade_controls(self, show, duration=250):
         has_video = self.media_player is not None
-        should_show = has_video and show
-        
-        target_opacity = 1.0 if should_show else 0.0
+        is_youtube = hasattr(self, 'web_view') and self.web_view.isVisible()
         
         # Stop any existing animations
         if hasattr(self, 'control_anims') and self.control_anims:
@@ -717,22 +730,22 @@ class ImageWidget(QWidget):
 
         controls = []
         if hasattr(self, 'pause_btn') and self.pause_btn:
-            controls.append(self.pause_btn)
+            controls.append((self.pause_btn, has_video))
         if hasattr(self, 'rewind_btn') and self.rewind_btn:
-            controls.append(self.rewind_btn)
+            controls.append((self.rewind_btn, has_video))
         if hasattr(self, 'forward_btn') and self.forward_btn:
-            controls.append(self.forward_btn)
+            controls.append((self.forward_btn, has_video))
         if hasattr(self, 'volume_btn') and self.volume_btn:
-            controls.append(self.volume_btn)
+            controls.append((self.volume_btn, has_video))
         if hasattr(self, 'seek_slider') and self.seek_slider:
-            controls.append(self.seek_slider)
+            controls.append((self.seek_slider, has_video))
         if hasattr(self, 'change_link_btn') and self.change_link_btn:
-            controls.append(self.change_link_btn)
-        if hasattr(self, 'volume_slider') and self.volume_slider:
-            # We don't opacity animate volume_slider directly, it's controlled by hover on volume_btn
-            pass
+            controls.append((self.change_link_btn, has_video or is_youtube))
 
-        for widget in controls:
+        for widget, condition in controls:
+            should_show = condition and show
+            target_opacity = 1.0 if should_show else 0.0
+            
             effect = widget.graphicsEffect()
             if not isinstance(effect, QGraphicsOpacityEffect):
                 effect = QGraphicsOpacityEffect(widget)
@@ -757,13 +770,24 @@ class ImageWidget(QWidget):
                 
                 if not should_show:
                     def make_hide_callback(w=widget):
-                        eff = w.graphicsEffect()
-                        if eff and eff.opacity() == 0.0:
-                            w.hide()
-                    anim.finished.connect(make_hide_callback)
+                        def callback():
+                            eff = w.graphicsEffect()
+                            if eff and eff.opacity() == 0.0:
+                                w.hide()
+                        return callback
+                    anim.finished.connect(make_hide_callback())
                     
                 anim.start()
                 self.control_anims.append(anim)
+
+        if not show and is_youtube:
+            self.web_view.page().runJavaScript("""
+                var iframe = document.querySelector('iframe');
+                if (iframe) {
+                    iframe.style.pointerEvents = 'none';
+                    setTimeout(() => { iframe.style.pointerEvents = 'auto'; }, 500);
+                }
+            """)
 
     def toggle_pause(self):
         if self.media_player:
@@ -909,6 +933,7 @@ class ImageWidget(QWidget):
             self.change_link_btn.raise_()
         
         self.update()
+        self.check_hover_and_update()
 
     def process_link(self, url):
         self.label.setText("Đang tải...\nVui lòng đợi")
