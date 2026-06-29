@@ -257,10 +257,66 @@ class CustomWebEngineView(QWebEngineView):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_widget = parent
+        self.setAcceptDrops(True)
+        self._drag_start_pos = None
+        self._is_dragging = False
+        self._window_start_pos = None
+        self.install_filters()
+
+    def install_filters(self):
+        if self.focusProxy():
+            self.focusProxy().installEventFilter(self)
+        for child in self.children():
+            if hasattr(child, 'installEventFilter'):
+                child.installEventFilter(self)
+
+    def childEvent(self, event):
+        if event.type() == QEvent.Type.ChildAdded:
+            child = event.child()
+            if hasattr(child, 'installEventFilter'):
+                child.installEventFilter(self)
+        super().childEvent(event)
+
+    def eventFilter(self, source, event):
+        if self.parent_widget:
+            if event.type() == QEvent.Type.MouseButtonPress:
+                if getattr(event, 'button', lambda: None)() == Qt.MouseButton.LeftButton:
+                    self._drag_start_pos = event.globalPosition().toPoint()
+                    self._is_dragging = False
+            elif event.type() == QEvent.Type.MouseMove:
+                if getattr(self, '_drag_start_pos', None) and (getattr(event, 'buttons', lambda: None)() & Qt.MouseButton.LeftButton):
+                    delta = event.globalPosition().toPoint() - self._drag_start_pos
+                    if not getattr(self, '_is_dragging', False) and delta.manhattanLength() > 5:
+                        self._is_dragging = True
+                        self._window_start_pos = self.parent_widget.pos()
+                    
+                    if getattr(self, '_is_dragging', False):
+                        self.parent_widget.move(self._window_start_pos + delta)
+                        return True
+            elif event.type() == QEvent.Type.MouseButtonRelease:
+                if getattr(event, 'button', lambda: None)() == Qt.MouseButton.LeftButton:
+                    if getattr(self, '_is_dragging', False):
+                        self._is_dragging = False
+                        self._drag_start_pos = None
+                        return True
+                    self._drag_start_pos = None
+        return super().eventFilter(source, event)
 
     def contextMenuEvent(self, event):
         if self.parent_widget and hasattr(self.parent_widget, 'showContextMenu'):
             self.parent_widget.showContextMenu(event.globalPos())
+
+    def dragEnterEvent(self, event):
+        if self.parent_widget:
+            self.parent_widget.dragEnterEvent(event)
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        if self.parent_widget:
+            self.parent_widget.dropEvent(event)
+        else:
+            super().dropEvent(event)
 
 class ImageWidget(QWidget):
     def __init__(self):
